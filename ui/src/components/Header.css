@@ -1,25 +1,26 @@
 .header {
-  border-bottom: 2px solid #333;
-  background-color: white;
+  border-bottom: none;
+  background-color: transparent;
   position: sticky;
   top: 0;
   z-index: 100;
 }
 
 .header-container {
-  max-width: 1200px;
+  max-width: 1000px;
   margin: 0 auto;
-  padding: 20px;
+  padding: 20px 40px;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  background-color: #1565C0;
 }
 
 .logo {
   font-size: 32px;
   font-weight: bold;
   margin: 0;
-  color: #333;
+  color: white;
 }
 
 .nav-tabs {
@@ -29,9 +30,9 @@
 
 .nav-tab {
   padding: 10px 24px;
-  border: 2px solid #2196F3;
-  background-color: #2196F3;
-  color: white;
+  border: 2px solid white;
+  background-color: white;
+  color: #1565C0;
   font-size: 16px;
   cursor: pointer;
   transition: all 0.3s;
@@ -40,13 +41,13 @@
 }
 
 .nav-tab:hover {
-  background-color: #1976D2;
-  border-color: #1976D2;
+  background-color: rgba(255, 255, 255, 0.9);
+  border-color: white;
 }
 
 .nav-tab.active {
-  background-color: #1565C0;
-  border-color: #1565C0;
+  background-color: #0D47A1;
+  border-color: #0D47A1;
   color: white;
 }
 

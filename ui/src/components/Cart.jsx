@@ -1,17 +1,7 @@
 import './Cart.css';
 
-function Cart({ cartItems, onOrder }) {
+function Cart({ cartItems, onOrder, onRemoveItem, onIncreaseQuantity, onDecreaseQuantity }) {
   const totalAmount = cartItems.reduce((sum, item) => sum + item.totalPrice, 0);
-
-  const handleOrder = () => {
-    if (cartItems.length === 0) {
-      alert('장바구니에 메뉴를 추가해주세요.');
-      return;
-    }
-    
-    alert(`총 ${totalAmount.toLocaleString()}원 주문이 완료되었습니다!`);
-    onOrder();
-  };
 
   return (
     <div className="cart">
@@ -26,16 +16,39 @@ function Cart({ cartItems, onOrder }) {
               <div className="cart-items">
                 {cartItems.map((item, index) => (
                   <div key={index} className="cart-item">
-                    <div className="cart-item-info">
-                      <span className="cart-item-name">
-                        {item.name}
-                        {item.options.length > 0 && ` (${item.options.join(', ')})`}
+                    <div className="cart-item-main">
+                      <div className="cart-item-info">
+                        <span className="cart-item-name">
+                          {item.name}
+                          {item.options.length > 0 && ` (${item.options.join(', ')})`}
+                        </span>
+                      </div>
+                      <div className="cart-item-controls">
+                        <button 
+                          className="quantity-btn" 
+                          onClick={() => onDecreaseQuantity(index)}
+                        >
+                          -
+                        </button>
+                        <span className="cart-item-quantity">{item.quantity}</span>
+                        <button 
+                          className="quantity-btn" 
+                          onClick={() => onIncreaseQuantity(index)}
+                        >
+                          +
+                        </button>
+                      </div>
+                      <span className="cart-item-price">
+                        {item.totalPrice.toLocaleString()}원
                       </span>
-                      <span className="cart-item-quantity">X {item.quantity}</span>
                     </div>
-                    <span className="cart-item-price">
-                      {item.totalPrice.toLocaleString()}원
-                    </span>
+                    <button 
+                      className="remove-btn" 
+                      onClick={() => onRemoveItem(index)}
+                      title="삭제"
+                    >
+                      ✕
+                    </button>
                   </div>
                 ))}
               </div>
@@ -47,7 +60,7 @@ function Cart({ cartItems, onOrder }) {
               <span className="total-label">총 금액</span>
               <span className="total-amount">{totalAmount.toLocaleString()}원</span>
             </div>
-            <button className="order-btn" onClick={handleOrder}>
+            <button className="order-btn" onClick={onOrder}>
               주문하기
             </button>
           </div>
