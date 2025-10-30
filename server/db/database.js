@@ -5,6 +5,9 @@ let poolConfig;
 
 if (process.env.DATABASE_URL) {
   // DATABASE_URL 사용 (클라우드 환경)
+  console.log('🔗 DATABASE_URL로 연결 중...');
+  console.log('📍 Host:', process.env.DATABASE_URL.split('@')[1]?.split('/')[0] || 'unknown');
+  
   poolConfig = {
     connectionString: process.env.DATABASE_URL,
     ssl: {
@@ -16,6 +19,11 @@ if (process.env.DATABASE_URL) {
   };
 } else {
   // 개별 환경변수 사용 (로컬 환경)
+  console.log('🔗 개별 환경변수로 연결 중...');
+  console.log('📍 Host:', process.env.DB_HOST);
+  console.log('📍 Database:', process.env.DB_NAME);
+  console.log('📍 User:', process.env.DB_USER);
+  
   const isCloudDatabase = process.env.DB_HOST && 
     (process.env.DB_HOST.includes('render.com') || 
      process.env.DB_HOST.includes('amazonaws.com') ||
