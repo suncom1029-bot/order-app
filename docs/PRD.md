@@ -495,3 +495,772 @@
 | preparing | 제조 중 | 주문한 메뉴를 제조 중인 상태 | 제조 완료 |
 | completed | 제조 완료 | 주문이 완료되어 고객에게 전달 가능한 상태 | (버튼 없음) |
 
+## 5. 백엔드 개발 명세
+
+### 5.1 개요
+
+백엔드는 Node.js와 Express를 사용하여 REST API를 제공하며, PostgreSQL 데이터베이스를 통해 데이터를 영구 저장합니다.
+
+### 5.2 데이터 모델
+
+#### 5.2.1 Menus (메뉴 테이블)
+
+메뉴 정보를 저장하는 테이블
+
+**필드**:
+- `id` (INTEGER, PRIMARY KEY, AUTO INCREMENT): 메뉴 고유 ID
+- `name` (VARCHAR(100), NOT NULL): 커피 이름 (예: "아메리카노(ICE)")
+- `description` (TEXT): 메뉴 설명
+- `price` (INTEGER, NOT NULL): 기본 가격 (원 단위)
+- `image_url` (VARCHAR(255)): 이미지 경로 또는 URL
+- `stock` (INTEGER, DEFAULT 0): 재고 수량
+- `created_at` (TIMESTAMP, DEFAULT NOW()): 생성 일시
+- `updated_at` (TIMESTAMP, DEFAULT NOW()): 수정 일시
+
+**제약 조건**:
+- `price`는 0 이상
+- `stock`는 0 이상
+- `name`은 UNIQUE
+
+**초기 데이터**:
+```sql
+INSERT INTO menus (name, description, price, image_url, stock) VALUES
+('아메리카노(ICE)', '간단한 설명...', 4000, '/americano-ice.jpg', 10),
+('아메리카노(HOT)', '간단한 설명...', 4000, '/americano-hot.jpg', 10),
+('카페라떼', '간단한 설명...', 5000, '/caffe-latte.jpg', 10);
+```
+
+#### 5.2.2 Options (옵션 테이블)
+
+메뉴에 추가 가능한 옵션 정보를 저장하는 테이블
+
+**필드**:
+- `id` (INTEGER, PRIMARY KEY, AUTO INCREMENT): 옵션 고유 ID
+- `name` (VARCHAR(50), NOT NULL): 옵션 이름 (예: "샷 추가", "시럽 추가")
+- `price` (INTEGER, NOT NULL, DEFAULT 0): 옵션 가격 (원 단위)
+- `menu_id` (INTEGER, FOREIGN KEY): 연결할 메뉴 ID (NULL 가능 - 모든 메뉴에 적용)
+- `created_at` (TIMESTAMP, DEFAULT NOW()): 생성 일시
+
+**제약 조건**:
+- `price`는 0 이상
+- `menu_id`는 menus 테이블의 `id`를 참조 (ON DELETE CASCADE)
+
+**초기 데이터**:
+```sql
+INSERT INTO options (name, price, menu_id) VALUES
+('샷 추가', 500, NULL),
+('시럽 추가', 0, NULL);
+```
+
+#### 5.2.3 Orders (주문 테이블)
+
+고객의 주문 정보를 저장하는 메인 테이블
+
+**필드**:
+- `id` (INTEGER, PRIMARY KEY, AUTO INCREMENT): 주문 고유 ID
+- `status` (VARCHAR(20), NOT NULL, DEFAULT 'pending'): 주문 상태
+  - `pending`: 주문 접수 대기
+  - `accepted`: 주문 접수
+  - `preparing`: 제조 중
+  - `completed`: 제조 완료
+- `total_amount` (INTEGER, NOT NULL): 총 주문 금액
+- `created_at` (TIMESTAMP, DEFAULT NOW()): 주문 일시
+- `updated_at` (TIMESTAMP, DEFAULT NOW()): 수정 일시
+
+**제약 조건**:
+- `total_amount`는 0 이상
+- `status`는 ENUM('pending', 'accepted', 'preparing', 'completed')
+
+#### 5.2.4 Order_Items (주문 항목 테이블)
+
+주문에 포함된 메뉴 항목을 저장하는 테이블
+
+**필드**:
+- `id` (INTEGER, PRIMARY KEY, AUTO INCREMENT): 주문 항목 고유 ID
+- `order_id` (INTEGER, NOT NULL, FOREIGN KEY): 주문 ID
+- `menu_id` (INTEGER, NOT NULL, FOREIGN KEY): 메뉴 ID
+- `menu_name` (VARCHAR(100), NOT NULL): 메뉴 이름 (스냅샷)
+- `quantity` (INTEGER, NOT NULL): 수량
+- `unit_price` (INTEGER, NOT NULL): 개당 가격 (옵션 포함)
+- `total_price` (INTEGER, NOT NULL): 총 가격 (unit_price × quantity)
+- `options` (TEXT): 선택한 옵션 (JSON 배열 형태)
+
+**제약 조건**:
+- `order_id`는 orders 테이블의 `id`를 참조 (ON DELETE CASCADE)
+- `menu_id`는 menus 테이블의 `id`를 참조 (ON DELETE RESTRICT)
+- `quantity`는 1 이상
+- `unit_price`, `total_price`는 0 이상
+
+**options 필드 예시**:
+```json
+["샷 추가", "시럽 추가"]
+```
+
+### 5.3 데이터베이스 스키마 및 사용자 흐름
+
+#### 5.3.1 전체 데이터 흐름
+
+```
+1. [화면 로드]
+   ↓
+   프론트엔드 → GET /api/menus → 백엔드 → DB: Menus 조회
+   ↓
+   메뉴 목록 표시 (가격, 이미지, 재고 등)
+
+2. [메뉴 선택 및 담기]
+   ↓
+   프론트엔드: 장바구니에 임시 저장 (로컬 상태)
+
+3. [주문하기]
+   ↓
+   프론트엔드 → POST /api/orders → 백엔드
+   ↓
+   트랜잭션 시작
+   ├─ DB: Orders 테이블에 주문 생성
+   ├─ DB: Order_Items 테이블에 주문 항목 생성
+   └─ DB: Menus 테이블의 재고 감소
+   ↓
+   트랜잭션 커밋
+   ↓
+   주문 완료 응답
+
+4. [관리자 화면 - 주문 조회]
+   ↓
+   프론트엔드 → GET /api/admin/orders → 백엔드
+   ↓
+   DB: Orders + Order_Items JOIN 조회
+   ↓
+   주문 현황 표시
+
+5. [관리자 화면 - 주문 상태 변경]
+   ↓
+   프론트엔드 → PATCH /api/admin/orders/:id/status → 백엔드
+   ↓
+   DB: Orders 테이블의 status 업데이트
+   ↓
+   상태 변경 완료
+
+6. [관리자 화면 - 재고 관리]
+   ↓
+   프론트엔드 → PATCH /api/admin/inventory/:id → 백엔드
+   ↓
+   DB: Menus 테이블의 stock 업데이트
+   ↓
+   재고 변경 완료
+```
+
+#### 5.3.2 상세 흐름 설명
+
+**1) 메뉴 조회 및 표시**
+- 프론트엔드가 앱 로드 시 `GET /api/menus` API 호출
+- 백엔드는 Menus 테이블에서 모든 메뉴 정보 조회
+- 주문하기 화면: 메뉴명, 가격, 이미지, 설명 표시
+- 관리자 화면: 재고 수량 추가 표시
+
+**2) 장바구니 관리**
+- 사용자가 메뉴 선택 시 프론트엔드에서 임시 저장
+- 옵션 선택 정보도 함께 저장
+- 장바구니에 메뉴, 수량, 옵션, 금액 표시
+
+**3) 주문 생성**
+- '주문하기' 버튼 클릭 시 `POST /api/orders` API 호출
+- 백엔드는 트랜잭션으로 처리:
+  1. Orders 테이블에 새 주문 생성 (status='pending')
+  2. Order_Items 테이블에 주문 항목들 생성
+  3. 각 메뉴의 재고 감소 (Menus.stock -= quantity)
+  4. 재고 부족 시 트랜잭션 롤백 및 에러 반환
+- 성공 시 주문 ID와 상태 반환
+
+**4) 주문 현황 조회**
+- 관리자 화면에서 `GET /api/admin/orders` API 호출
+- Orders와 Order_Items를 JOIN하여 전체 주문 정보 조회
+- 주문 시간, 메뉴, 수량, 금액, 상태 표시
+- 최신 주문이 상단에 표시되도록 정렬
+
+**5) 주문 상태 변경**
+- 관리자가 상태 변경 버튼 클릭 시 `PATCH /api/admin/orders/:id/status` API 호출
+- 백엔드는 해당 주문의 status 필드 업데이트
+- 상태 흐름: pending → accepted → preparing → completed
+
+**6) 재고 관리**
+- 관리자가 +/- 버튼 클릭 시 `PATCH /api/admin/inventory/:menu_id` API 호출
+- 백엔드는 Menus 테이블의 stock 필드 업데이트
+- 재고는 0 이하로 내려갈 수 없음
+
+### 5.4 API 설계
+
+#### 5.4.1 메뉴 관리 API
+
+##### GET /api/menus
+메뉴 목록 조회
+
+**요청**:
+- Method: GET
+- Headers: 없음
+- Body: 없음
+
+**응답**:
+- Status: 200 OK
+- Body:
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "name": "아메리카노(ICE)",
+      "description": "간단한 설명...",
+      "price": 4000,
+      "image_url": "/americano-ice.jpg",
+      "stock": 10,
+      "created_at": "2025-10-29T10:00:00Z",
+      "updated_at": "2025-10-29T10:00:00Z"
+    },
+    ...
+  ]
+}
+```
+
+**에러 응답**:
+- Status: 500 Internal Server Error
+```json
+{
+  "success": false,
+  "error": "메뉴 조회 중 오류가 발생했습니다."
+}
+```
+
+##### GET /api/menus/:id
+특정 메뉴 상세 조회
+
+**요청**:
+- Method: GET
+- URL Parameters: `id` (메뉴 ID)
+
+**응답**:
+- Status: 200 OK
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "name": "아메리카노(ICE)",
+    "description": "간단한 설명...",
+    "price": 4000,
+    "image_url": "/americano-ice.jpg",
+    "stock": 10,
+    "created_at": "2025-10-29T10:00:00Z",
+    "updated_at": "2025-10-29T10:00:00Z"
+  }
+}
+```
+
+**에러 응답**:
+- Status: 404 Not Found
+```json
+{
+  "success": false,
+  "error": "메뉴를 찾을 수 없습니다."
+}
+```
+
+#### 5.4.2 주문 관리 API
+
+##### POST /api/orders
+새 주문 생성
+
+**요청**:
+- Method: POST
+- Headers: `Content-Type: application/json`
+- Body:
+```json
+{
+  "items": [
+    {
+      "menu_id": 1,
+      "quantity": 2,
+      "options": ["샷 추가"]
+    },
+    {
+      "menu_id": 3,
+      "quantity": 1,
+      "options": []
+    }
+  ]
+}
+```
+
+**처리 로직**:
+1. 각 메뉴의 재고 확인
+2. 재고가 충분한지 검증
+3. 트랜잭션 시작
+4. Orders 테이블에 주문 생성
+5. Order_Items 테이블에 항목들 생성
+6. Menus 테이블의 재고 감소
+7. 트랜잭션 커밋
+
+**응답**:
+- Status: 201 Created
+```json
+{
+  "success": true,
+  "data": {
+    "order_id": 1,
+    "status": "pending",
+    "total_amount": 13000,
+    "items": [
+      {
+        "menu_name": "아메리카노(ICE)",
+        "quantity": 2,
+        "options": ["샷 추가"],
+        "total_price": 9000
+      },
+      {
+        "menu_name": "카페라떼",
+        "quantity": 1,
+        "options": [],
+        "total_price": 5000
+      }
+    ],
+    "created_at": "2025-10-29T14:30:00Z"
+  }
+}
+```
+
+**에러 응답**:
+- Status: 400 Bad Request (재고 부족)
+```json
+{
+  "success": false,
+  "error": "재고가 부족합니다.",
+  "details": {
+    "menu_name": "아메리카노(ICE)",
+    "requested": 5,
+    "available": 3
+  }
+}
+```
+
+- Status: 400 Bad Request (잘못된 요청)
+```json
+{
+  "success": false,
+  "error": "주문 항목이 비어있습니다."
+}
+```
+
+##### GET /api/orders/:id
+특정 주문 조회
+
+**요청**:
+- Method: GET
+- URL Parameters: `id` (주문 ID)
+
+**응답**:
+- Status: 200 OK
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "status": "pending",
+    "total_amount": 13000,
+    "items": [
+      {
+        "id": 1,
+        "menu_id": 1,
+        "menu_name": "아메리카노(ICE)",
+        "quantity": 2,
+        "unit_price": 4500,
+        "total_price": 9000,
+        "options": ["샷 추가"]
+      },
+      {
+        "id": 2,
+        "menu_id": 3,
+        "menu_name": "카페라떼",
+        "quantity": 1,
+        "unit_price": 5000,
+        "total_price": 5000,
+        "options": []
+      }
+    ],
+    "created_at": "2025-10-29T14:30:00Z",
+    "updated_at": "2025-10-29T14:30:00Z"
+  }
+}
+```
+
+**에러 응답**:
+- Status: 404 Not Found
+```json
+{
+  "success": false,
+  "error": "주문을 찾을 수 없습니다."
+}
+```
+
+#### 5.4.3 관리자 API
+
+##### GET /api/admin/orders
+모든 주문 조회
+
+**요청**:
+- Method: GET
+- Query Parameters (선택):
+  - `status`: 주문 상태 필터링 (pending, accepted, preparing, completed)
+  - `limit`: 조회 개수 (기본값: 50)
+  - `offset`: 오프셋 (기본값: 0)
+
+**예시**:
+```
+GET /api/admin/orders?status=pending&limit=20
+```
+
+**응답**:
+- Status: 200 OK
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "status": "pending",
+      "total_amount": 13000,
+      "items": [
+        {
+          "menu_name": "아메리카노(ICE)",
+          "quantity": 2,
+          "options": ["샷 추가"]
+        }
+      ],
+      "created_at": "2025-10-29T14:30:00Z",
+      "updated_at": "2025-10-29T14:30:00Z"
+    },
+    ...
+  ],
+  "pagination": {
+    "total": 100,
+    "limit": 20,
+    "offset": 0
+  }
+}
+```
+
+##### PATCH /api/admin/orders/:id/status
+주문 상태 변경
+
+**요청**:
+- Method: PATCH
+- URL Parameters: `id` (주문 ID)
+- Headers: `Content-Type: application/json`
+- Body:
+```json
+{
+  "status": "accepted"
+}
+```
+
+**상태 변경 규칙**:
+- pending → accepted
+- accepted → preparing
+- preparing → completed
+- completed → (변경 불가)
+
+**응답**:
+- Status: 200 OK
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "status": "accepted",
+    "updated_at": "2025-10-29T14:35:00Z"
+  }
+}
+```
+
+**에러 응답**:
+- Status: 400 Bad Request (잘못된 상태 전환)
+```json
+{
+  "success": false,
+  "error": "잘못된 상태 전환입니다.",
+  "details": {
+    "current_status": "completed",
+    "requested_status": "preparing"
+  }
+}
+```
+
+##### GET /api/admin/dashboard
+대시보드 통계 조회
+
+**요청**:
+- Method: GET
+
+**응답**:
+- Status: 200 OK
+```json
+{
+  "success": true,
+  "data": {
+    "total_orders": 10,
+    "pending_orders": 3,
+    "accepted_orders": 2,
+    "preparing_orders": 4,
+    "completed_orders": 1
+  }
+}
+```
+
+##### GET /api/admin/inventory
+재고 현황 조회
+
+**요청**:
+- Method: GET
+
+**응답**:
+- Status: 200 OK
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "menu_id": 1,
+      "menu_name": "아메리카노(ICE)",
+      "stock": 10
+    },
+    {
+      "menu_id": 2,
+      "menu_name": "아메리카노(HOT)",
+      "stock": 3
+    },
+    {
+      "menu_id": 3,
+      "menu_name": "카페라떼",
+      "stock": 0
+    }
+  ]
+}
+```
+
+##### PATCH /api/admin/inventory/:menu_id
+재고 수량 변경
+
+**요청**:
+- Method: PATCH
+- URL Parameters: `menu_id` (메뉴 ID)
+- Headers: `Content-Type: application/json`
+- Body:
+```json
+{
+  "stock_change": 5
+}
+```
+또는
+```json
+{
+  "stock_change": -3
+}
+```
+
+**처리 로직**:
+- `stock_change` > 0: 재고 증가
+- `stock_change` < 0: 재고 감소
+- 결과 재고가 0 미만이 되면 에러 반환
+
+**응답**:
+- Status: 200 OK
+```json
+{
+  "success": true,
+  "data": {
+    "menu_id": 1,
+    "menu_name": "아메리카노(ICE)",
+    "old_stock": 10,
+    "new_stock": 15,
+    "updated_at": "2025-10-29T14:40:00Z"
+  }
+}
+```
+
+**에러 응답**:
+- Status: 400 Bad Request (재고 음수)
+```json
+{
+  "success": false,
+  "error": "재고는 0 미만이 될 수 없습니다.",
+  "details": {
+    "current_stock": 2,
+    "requested_change": -5
+  }
+}
+```
+
+#### 5.4.4 옵션 관리 API
+
+##### GET /api/options
+옵션 목록 조회
+
+**요청**:
+- Method: GET
+- Query Parameters (선택):
+  - `menu_id`: 특정 메뉴의 옵션만 조회
+
+**응답**:
+- Status: 200 OK
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "name": "샷 추가",
+      "price": 500,
+      "menu_id": null
+    },
+    {
+      "id": 2,
+      "name": "시럽 추가",
+      "price": 0,
+      "menu_id": null
+    }
+  ]
+}
+```
+
+### 5.5 에러 처리
+
+#### 5.5.1 공통 에러 코드
+
+| HTTP 상태 | 에러 코드 | 설명 |
+|----------|---------|------|
+| 400 | BAD_REQUEST | 잘못된 요청 (필수 필드 누락, 유효성 검증 실패) |
+| 404 | NOT_FOUND | 리소스를 찾을 수 없음 |
+| 409 | CONFLICT | 리소스 충돌 (재고 부족 등) |
+| 500 | INTERNAL_SERVER_ERROR | 서버 내부 오류 |
+
+#### 5.5.2 에러 응답 형식
+
+모든 에러는 다음 형식으로 응답:
+```json
+{
+  "success": false,
+  "error": "에러 메시지",
+  "code": "ERROR_CODE",
+  "details": {
+    // 추가 상세 정보 (선택)
+  }
+}
+```
+
+### 5.6 데이터베이스 인덱스
+
+성능 최적화를 위한 인덱스 설계:
+
+```sql
+-- Menus 테이블
+CREATE INDEX idx_menus_name ON menus(name);
+CREATE INDEX idx_menus_stock ON menus(stock);
+
+-- Orders 테이블
+CREATE INDEX idx_orders_status ON orders(status);
+CREATE INDEX idx_orders_created_at ON orders(created_at DESC);
+
+-- Order_Items 테이블
+CREATE INDEX idx_order_items_order_id ON order_items(order_id);
+CREATE INDEX idx_order_items_menu_id ON order_items(menu_id);
+
+-- Options 테이블
+CREATE INDEX idx_options_menu_id ON options(menu_id);
+```
+
+### 5.7 트랜잭션 관리
+
+#### 5.7.1 주문 생성 트랜잭션
+
+주문 생성 시 ACID 보장을 위한 트랜잭션 처리:
+
+```javascript
+// 트랜잭션 예시 (의사 코드)
+BEGIN TRANSACTION;
+
+try {
+  // 1. 재고 확인 및 잠금
+  FOR EACH item IN order_items {
+    SELECT stock FROM menus WHERE id = item.menu_id FOR UPDATE;
+    IF stock < item.quantity THEN
+      THROW ERROR "재고 부족";
+    END IF;
+  }
+
+  // 2. 주문 생성
+  INSERT INTO orders (...) VALUES (...);
+  
+  // 3. 주문 항목 생성
+  FOR EACH item IN order_items {
+    INSERT INTO order_items (...) VALUES (...);
+  }
+  
+  // 4. 재고 감소
+  FOR EACH item IN order_items {
+    UPDATE menus SET stock = stock - item.quantity WHERE id = item.menu_id;
+  }
+  
+  COMMIT;
+} catch (error) {
+  ROLLBACK;
+  THROW error;
+}
+```
+
+### 5.8 보안 고려사항
+
+#### 5.8.1 입력 검증
+
+- 모든 API 요청에 대해 입력값 검증
+- SQL Injection 방지를 위한 Prepared Statement 사용
+- XSS 방지를 위한 입력 sanitization
+
+#### 5.8.2 CORS 설정
+
+프론트엔드와 백엔드가 다른 포트에서 실행되므로 CORS 설정 필요:
+```javascript
+// 허용할 origin 설정
+CORS origin: http://localhost:5173
+Methods: GET, POST, PATCH, DELETE
+Headers: Content-Type, Authorization
+```
+
+#### 5.8.3 Rate Limiting
+
+API 남용 방지를 위한 속도 제한:
+- 일반 API: 100 requests/분
+- 관리자 API: 200 requests/분
+
+### 5.9 배포 및 환경 설정
+
+#### 5.9.1 환경 변수
+
+```env
+# 데이터베이스 설정
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=coffee_order_db
+DB_USER=postgres
+DB_PASSWORD=your_password
+
+# 서버 설정
+PORT=3000
+NODE_ENV=development
+
+# CORS 설정
+FRONTEND_URL=http://localhost:5173
+```
+
+#### 5.9.2 개발/운영 환경 분리
+
+- **개발 환경**: localhost, 상세 로그, 에러 스택 노출
+- **운영 환경**: 실제 도메인, 최소 로그, 에러 메시지만 노출
+

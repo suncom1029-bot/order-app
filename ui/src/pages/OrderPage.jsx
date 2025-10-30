@@ -1,34 +1,26 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import MenuCard from '../components/MenuCard';
 import Cart from '../components/Cart';
+import { menuAPI } from '../api/api';
 import './OrderPage.css';
-
-const MENU_DATA = [
-  {
-    id: 1,
-    name: '아메리카노(ICE)',
-    price: 4000,
-    description: '간단한 설명...',
-    image: '/americano-ice.jpg',
-  },
-  {
-    id: 2,
-    name: '아메리카노(HOT)',
-    price: 4000,
-    description: '간단한 설명...',
-    image: '/americano-hot.jpg',
-  },
-  {
-    id: 3,
-    name: '카페라떼',
-    price: 5000,
-    description: '간단한 설명...',
-    image: '/caffe-latte.jpg',
-  },
-];
 
 function OrderPage({ inventory, onAddOrder }) {
   const [cartItems, setCartItems] = useState([]);
+  const [menuData, setMenuData] = useState([]);
+
+  // 메뉴 데이터 로드
+  useEffect(() => {
+    const loadMenuData = async () => {
+      try {
+        const menus = await menuAPI.getAll();
+        setMenuData(menus);
+      } catch (error) {
+        console.error('메뉴 데이터 로드 실패:', error);
+      }
+    };
+
+    loadMenuData();
+  }, []);
 
   // 재고 확인 함수
   const getAvailableStock = (menuId) => {
@@ -132,7 +124,7 @@ function OrderPage({ inventory, onAddOrder }) {
     );
   };
 
-  const handleOrder = () => {
+  const handleOrder = async () => {
     if (cartItems.length === 0) {
       alert('장바구니에 메뉴를 추가해주세요.');
       return;
@@ -149,18 +141,23 @@ function OrderPage({ inventory, onAddOrder }) {
       totalAmount: cartItems.reduce((sum, item) => sum + item.totalPrice, 0),
     };
 
-    // 주문 추가
-    onAddOrder(orderData);
+    try {
+      // 주문 추가
+      await onAddOrder(orderData);
 
-    // 장바구니 초기화
-    setCartItems([]);
-    
-    alert('주문이 완료되었습니다!');
+      // 장바구니 초기화
+      setCartItems([]);
+      
+      alert('주문이 완료되었습니다!');
+    } catch (error) {
+      alert(error.message || '주문 처리 중 오류가 발생했습니다.');
+    }
   };
 
   // 메뉴 데이터와 재고 정보 결합
-  const menusWithStock = MENU_DATA.map((menu) => ({
+  const menusWithStock = menuData.map((menu) => ({
     ...menu,
+    image: menu.image_url, // 백엔드 데이터 필드명 변환
     stock: inventory.find((item) => item.id === menu.id)?.stock || 0,
   }));
 

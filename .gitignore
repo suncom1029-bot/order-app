@@ -1,0 +1,44 @@
+# 프로젝트 전역 .gitignore
+
+# 환경 변수
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# 의존성
+node_modules/
+
+# 로그
+*.log
+logs/
+
+# OS 파일
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+Desktop.ini
+
+# IDE 설정
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 데이터베이스
+*.sqlite
+*.sqlite3
+*.db
+
+# 백업 파일
+*.bak
+*.backup
+
+# 캐시
+.cache/
+tmp/
+*.tmp
+

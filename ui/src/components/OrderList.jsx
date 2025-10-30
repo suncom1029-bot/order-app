@@ -17,6 +17,7 @@ function OrderList({ orders, onStatusChange }) {
   };
 
   const formatDate = (dateString) => {
+    if (!dateString) return '';
     const date = new Date(dateString);
     const month = date.getMonth() + 1;
     const day = date.getDate();
@@ -37,20 +38,20 @@ function OrderList({ orders, onStatusChange }) {
             return (
               <div key={order.id} className="order-item">
                 <div className="order-item-header">
-                  <span className="order-date">{formatDate(order.createdAt)}</span>
+                  <span className="order-date">{formatDate(order.created_at || order.createdAt)}</span>
                 </div>
                 <div className="order-item-body">
                   <div className="order-item-info">
                     <span className="order-menu">
-                      {order.items.map((item, idx) => (
+                      {Array.isArray(order.items) && order.items.map((item, idx) => (
                         <span key={idx}>
-                          {item.name} x {item.quantity}
+                          {item.menu_name || item.name} x {item.quantity}
                           {idx < order.items.length - 1 && ', '}
                         </span>
                       ))}
                     </span>
                     <span className="order-price">
-                      {order.totalAmount.toLocaleString()}원
+                      {(order.total_amount || order.totalAmount)?.toLocaleString()}원
                     </span>
                   </div>
                   {statusButton && (
