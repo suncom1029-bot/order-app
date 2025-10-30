@@ -1,5 +1,5 @@
-// API 기본 URL
-const API_BASE_URL = 'http://localhost:3000';
+// API 기본 URL (환경변수 또는 기본값)
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 // API 호출 헬퍼 함수
 const apiCall = async (endpoint, options = {}) => {
