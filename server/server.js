@@ -9,9 +9,27 @@ const adminRoutes = require('./routes/adminRoutes');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// 미들웨어
+// CORS 설정 - 여러 프론트엔드 URL 허용
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'https://order-app-frontend-xdek.onrender.com',
+  process.env.FRONTEND_URL
+].filter(Boolean);
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin: function (origin, callback) {
+    // origin이 없는 경우 (같은 서버에서의 요청) 허용
+    if (!origin) return callback(null, true);
+    
+    // 허용된 origin 목록에 있으면 허용
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      console.log(`⚠️ CORS 차단된 origin: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true
 }));
 app.use(express.json());

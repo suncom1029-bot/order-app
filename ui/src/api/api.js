@@ -1,5 +1,25 @@
-// API 기본 URL (환경변수 또는 기본값)
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+// API 기본 URL 자동 감지
+const getApiBaseUrl = () => {
+  // 1. 환경변수가 설정되어 있으면 사용
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL;
+  }
+  
+  // 2. 프로덕션 환경 (Render)인 경우
+  if (window.location.hostname.includes('onrender.com')) {
+    return 'https://order-app-backend-ghte.onrender.com';
+  }
+  
+  // 3. 로컬 개발 환경
+  return 'http://localhost:3000';
+};
+
+const API_BASE_URL = getApiBaseUrl();
+
+// 개발 환경에서 API URL 로깅
+if (import.meta.env.DEV) {
+  console.log('🔗 API Base URL:', API_BASE_URL);
+}
 
 // API 호출 헬퍼 함수
 const apiCall = async (endpoint, options = {}) => {
